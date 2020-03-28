@@ -91,13 +91,15 @@ class DGM_layer(tf.keras.layers.Layer):
 
 train = tf.keras.Input(shape=(Config.dim + 1,), batch_size=Config.batch_size*2)
 model = tf.keras.Model(inputs=train, outputs=DGM_layer()(train))
-opt = tf.keras.optimizers.Adam(learning_rate=tf.keras.optimizers.schedules.PiecewiseConstantDecay([2000,5000,7500,10000],[1e-4, 4e-5, 1.5e-5,6e-6,2e-6]))
+#opt = tf.keras.optimizers.Adam(tf.keras.optimizers.schedules.ExponentialDecay(1e-3,decay_steps=2000,decay_rate=0.5,staircase=True))
+opt = tf.keras.optimizers.Adam(tf.keras.optimizers.schedules.PiecewiseConstantDecay([250],[1e-3,2e-4]))
 
 class weighted_loss(tf.keras.losses.Loss):
 
     def call(self, y_true, y_pred):
         loss1, loss2 = tf.split(tf.math.square(y_pred - y_true), 2, axis=0)
-        base = tf.reduce_sum(loss1)
+        base = tf.maximum(tf.reduce_sum(loss1), tf.reduce_sum(loss2))
+        loss1 = loss1 / tf.reduce_sum(loss1) * base
         loss2 = loss2 / tf.reduce_sum(loss2) * base
         return tf.reduce_mean(loss1)/2.0 + tf.reduce_mean(loss2)/2.0
 
@@ -122,17 +124,17 @@ for i in range(Config.epoch_num):
     
     with tf.GradientTape() as tape:
         loss = tf.keras.losses.MeanSquaredError()(0.0, model(data))
+        #loss = weighted_loss()(0.0, model(data))
     gen_time = gen_time+dt.datetime.now()-mid
     grads = tape.gradient(loss, model.trainable_weights)
-    
     loss_hist.append(loss.numpy())
-    
     opt.apply_gradients(zip(grads, model.trainable_weights))
     if i%10 == 0:
-        print('{} epochs spend {} with loss {:.3f}'.format(i, dt.datetime.now() - start, loss))
-        print('generate {} epochs spend {}'.format(i, gen_time))
-    if (i+1) % 1000 == 0:
-        model.save(filepath=Config.filepath + "log/model" + str(i))
+        print('{} epochs spend {} with loss {:.5f}'.format(i, dt.datetime.now() - start, loss))
+        #print('generate {} epochs spend {}'.format(i, gen_time))
+    if i == 600:
+        model.save_weights(filepath=Config.filepath + "log/model" + str(i + 1))
+        break
     
 
 def bs_option(opt_type, r, sig, T, K, s0):
@@ -158,8 +160,8 @@ def bs_option(opt_type, r, sig, T, K, s0):
         return stats.norm.cdf(d1) * s0 - stats.norm.cdf(d2) * K * np.exp(-r * T)
 
 sample = tf.concat([generate_data(),generate_data()],axis=0)
-option_mu = Config._mu-Config._sig ** 2/2
-option_sig = Config._sig/np.sqrt(Config.dim)
+option_sig = Config._sig * np.sqrt((1 + (Config.dim - 1) * Config.rho) / Config.dim)
+option_mu = Config._mu-Config._sig ** 2/2+option_sig**2/2
 eu_opt = bs_option('put', option_mu, option_sig, 0.01, Config.K, np.product(sample[:-1],axis=1))
 res = model.get_layer(name='DGM').value(sample[:Config.batch_size])
 print(model.predict(sample))
