@@ -1,3 +1,4 @@
+ 
 # -*- coding: utf-8 -*-
 # file to custom layers, loss and metrics in fitting PDE
 
@@ -19,13 +20,11 @@ tf.autograph.set_verbosity(1)
 # define the the layer in DGM NN
 class DGM_layer(tf.keras.layers.Layer):
     """The only layer to process input in the NN.
-
     Args:
         units: number of neurons of NN
     Attributes:
         units: number of neurons of NN
         matrix: calculate cholesky decomposition of covariance matrix of normal distribution repeatedly used in Monte Carlo
-
     """
     def __init__(self, units=Config.unit_num):
         super(DGM_layer, self).__init__(trainable=True, name='DGM', dtype=tf.float32)
@@ -35,7 +34,6 @@ class DGM_layer(tf.keras.layers.Layer):
     
     def build(self, input_shape):
         """A build-in function of tensorflow to initialize the weights in NN.
-
         Args:
             input_shape: default parameter 'input_shape'of class `layer`
         """
@@ -65,7 +63,6 @@ class DGM_layer(tf.keras.layers.Layer):
     
     def act_func(self, x, name=Config.func_name):
         """select the type of activation function in NN.
-
         Args
             x: value of input
             name: type of activation function
@@ -91,7 +88,6 @@ class DGM_layer(tf.keras.layers.Layer):
 
     def value(self, inputs):
         """estimated function of $f$; generally, `inputs` here has 1/3 length for American opyion and 1/2 for European option
-
         Args:
             inputs: array $(x,t)$
         Returns:
@@ -109,11 +105,10 @@ class DGM_layer(tf.keras.layers.Layer):
     def boundary(self, x):
         """terminal condition of the PDE
         """
-        return tf.nn.relu(Config.K-tf.math.pow(tf.math.reduce_prod(x, axis=1), 1 / tf.cast(tf.shape(x)[-1], tf.float32)))
+        return tf.nn.relu(Config.K-tf.math.pow(tf.math.reduce_prod(x, axis=1), 1.0  / tf.cast(tf.shape(x)[-1], tf.float32)))
 
     def call(self, inputs):
         """function which will be applied when the class is called.
-
         Args:
             inputs: concatenated array with data from 2/3 datasets. The first is for dynamic term, second for terminal term, third for constraint term when it's splitted.
         Returns:
@@ -126,7 +121,7 @@ class DGM_layer(tf.keras.layers.Layer):
         fprime = g1.gradient(ftx, input1)
         # terms containing the first derivatives
         term1_1 = tf.reduce_sum(tf.multiply(tf.concat([self.mu(input1[:,:-1]), tf.ones(shape=(tf.shape(input1)[0], 1))], axis=1), fprime), axis=1)
-        xdiff = tfp.distributions.MultivariateNormalTriL(loc=input1[:,:-1], scale_tril=self.matrix).sample(sample_shape=(Config.mc_num))*tf.broadcast_to(self.sigma(input1[:,:-1]),shape=(Config.mc_num,input1.shape[0], input1.shape[1]-1))
+        xdiff = tfp.distributions.MultivariateNormalTriL(loc=0.0, scale_tril=self.matrix).sample(sample_shape=(Config.mc_num, input1.shape[0])) * tf.broadcast_to(self.sigma(input1[:,:-1]), shape=(Config.mc_num, input1.shape[0], input1.shape[1] - 1))
         violation = tf.concat([xdiff, tf.zeros(shape=(Config.mc_num, input1.shape[0], 1))], axis=2)
         xplus = tf.expand_dims(input1,axis=0) + violation
         with tf.GradientTape() as g1_1:
@@ -144,6 +139,7 @@ class DGM_layer(tf.keras.layers.Layer):
 train = tf.keras.Input(shape=(Config.dim + 1,), batch_size=Config.batch_size*2)
 model = tf.keras.Model(inputs=train, outputs=DGM_layer()(train))
 #opt = tf.keras.optimizers.Adam(tf.keras.optimizers.schedules.ExponentialDecay(1e-3,decay_steps=2000,decay_rate=0.5,staircase=True)) tf.keras.optimizers.schedules.PiecewiseConstantDecay([300],[1e-3,2e-4])
+#opt = tf.keras.optimizers.Adam(tf.keras.optimizers.schedules.PiecewiseConstantDecay([5000, 10000, 20000, 30000, 40000, 45000],[1e-4, 5e-5, 1e-5, 5e-6, 1e-6, 5e-7, 1e-7]))
 opt = tf.keras.optimizers.Adam()
 
 class weighted_loss(tf.keras.losses.Loss):
@@ -156,7 +152,6 @@ class weighted_loss(tf.keras.losses.Loss):
 # generate trainset
 def generate_data(tfixed:bool):
     """generate required data to train the model
-
     Args:
         if tfixed is True, the data is for terminal condition with `t` as `T`, otherwise it's for dynamic condition or constraint condition
     Returns:
@@ -174,32 +169,39 @@ def generate_data(tfixed:bool):
 # custom training process, which can be integrated in the class definition of model as `train_step` in the coming tensorflow2.2.0
 loss_hist = []
 start = dt.datetime.now()
-gen_time = dt.datetime.now()-dt.datetime.now()
-for i in range(Config.epoch_num):
-    mid = dt.datetime.now()
-    data1 = generate_data(False)
-    data2 = generate_data(True)
-    #data3 = generate_data(True)
-    data = tf.concat([data1, data2], axis=0)
-    with tf.GradientTape() as tape:
-        #loss = tf.keras.losses.MeanSquaredError()(0.0, model(data))
-        loss = weighted_loss()(0.0, model(data))
-    #gen_time = gen_time+dt.datetime.now()-mid
-    grads = tape.gradient(loss, model.trainable_weights)
-    loss_hist.append(loss.numpy())
-    opt.apply_gradients(zip(grads, model.trainable_weights))
-    if i%10 == 0:
-        print('{} epochs spend {} with loss {:.5f}'.format(i, dt.datetime.now() - start, loss))
-        #print('generate {} epochs spend {}'.format(i, gen_time))
-    """if i == 600:
-        model.save_weights(filepath=Config.filepath + "log/model" + str(i + 1))
-        break """
-model.save_weights(filepath=Config.filepath + "log/model" + str(i + 1))
+gen_time = dt.datetime.now() - dt.datetime.now()
+try:
+    for i in range(Config.epoch_num):
+        mid = dt.datetime.now()
+        data1 = generate_data(False)
+        data2 = generate_data(True)
+        #data3 = generate_data(True)
+        data = tf.concat([data1, data2], axis=0)
+        with tf.GradientTape() as tape:
+            #loss = tf.keras.losses.MeanSquaredError()(0.0, model(data))
+            loss = weighted_loss()(0.0, model(data))
+        #gen_time = gen_time+dt.datetime.now()-mid
+        grads = tape.gradient(loss, model.trainable_weights)
+        loss_hist.append(loss.numpy())
+        opt.apply_gradients(zip(grads, model.trainable_weights))
+        if i%10 == 0:
+            print('{} epochs spend {} with loss {:.5f}'.format(i, dt.datetime.now() - start, loss))
+            #print('generate {} epochs spend {}'.format(i, gen_time))
+        if (i+1)%1000 == 0:
+            model.save_weights(filepath=Config.filepath + "log/model" + str(i + 1))
+except KeyboardInterrupt:
+    pass
+finally:
+    import matplotlib.pyplot as plt
+    plt.plot(loss_hist)
+    plt.savefig(Config.filepath+'loss.png')
+    import pandas as pd
+    pd.Series(loss_hist).to_csv(Config.filepath + 'loss.csv')
+    model.save_weights(filepath=Config.filepath + "log/final_model" )
 
 # test the training result with analytical solution
 def bs_option(opt_type, r, sig, T, K, s0):
     '''function to calculate options price with Black-Scholes formula.
-
     Args:
         opt_type: `call` or `put`.
         r: 
@@ -207,7 +209,6 @@ def bs_option(opt_type, r, sig, T, K, s0):
         T: time to maturity.
         K: strike price.
         s0:initial price.
-
     Returns:
         A value or a sequence of values with datetime index.
     '''
@@ -224,19 +225,3 @@ option_sig = Config._sig * np.sqrt((1 + (Config.dim - 1) * Config.rho) / Config.
 option_mu = Config._mu-Config._sig ** 2/2+option_sig**2/2
 eu_opt = bs_option('put', option_mu, option_sig, Config.T-sample[:,-1], Config.K, np.power(np.product(sample[:,:-1],axis=1),1/Config.dim))[:20]
 res = model.get_layer(name='DGM').value(sample[:20])
-"""
-import matplotlib.pyplot as plt
-plt.plot(loss_hist)
-plt.savefig(Config.filepath+'loss.png')
-import pandas as pd
-pd.Series(loss_hist).to_csv(Config.filepath+'loss.csv')"""
-
-'''
-# finite difference method for pricing American options
-N, Nt = int(1e5), int(2e3)
-h, tau = Config.xmax / N, Config.T / Nt
-gamma1 = (Config._mu - Config._sig ** 2 / 2) / 2 * tau / h  - Config._sig ** 2 * tau / h ** 2 / 2
-gamma2 = 1 - Config._sig ** 2 * tau / h ** 2
-gamma3 = -(Config._mu - Config._sig ** 2 / 2) / 2 * tau / h  - Config._sig ** 2 * tau / h ** 2 / 2
-C = diags([[gamma1],[gamma2],[gamma3]], [-1, 0, 1], shape=(N+1, N+1))
-'''
