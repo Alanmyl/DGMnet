@@ -1,3 +1,3 @@
 # DGMnet
 Neural Network to Solve PDE.
-The codes have been tested on python 3.8.2 with tensorflow-gpu 2.1.0.
+The codes have been tested on python 3.8.3 with tensorflow-gpu 2.2.0.
