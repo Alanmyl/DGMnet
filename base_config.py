@@ -14,7 +14,7 @@ class config:
         self.delta = 1e-5 # step size in approximate second derivatives of f
         self.unit_num = 50 # number of sample in the input layer
         self.layer_num = 3 # times to repeat LSTM-like layers when approximating solutions of PDE
-        self.xmax = 5 # maximum absolute value when generating data
+        self.xmax = 2 # maximum absolute value when generating data
         self.filepath = '/home/alanmei/Alan/Columbia University/Research/' # working directory
 
 Config = config()
